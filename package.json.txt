@@ -1,0 +1,15 @@
+{
+  "name": "rec-bot",
+  "version": "1.0.0",
+  "description": ".REC Discord AI horror bot",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "openai": "^4.0.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2"
+  }
+}
