@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, ActivityType } from 'discord.js';
+import { Client, GatewayIntentBits, ActivityType, Partials, ChannelType } from 'discord.js';
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
 import express from 'express';
@@ -26,7 +26,9 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMembers, // Required to see member display names
+    GatewayIntentBits.DirectMessages, // ** NEW: Required to listen for DMs
   ],
+  partials: [Partials.Channel], // ** NEW: Required for DM channel detection
 });
 
 // --- OpenAI Client Setup ---
@@ -35,7 +37,6 @@ const openai = new OpenAI({
 });
 
 // --- Enhanced Keywords (Now with Game Lore) ---
-// These are triggers for the AI to focus on.
 const HORROR_KEYWORDS = [
   // Base Horror
   'camera', 'mic', 'fear', 'hallucination', 'watching', 'see', 'hear',
@@ -47,66 +48,73 @@ const HORROR_KEYWORDS = [
   'feel', 'bored', 'angry', 'lonely', 'human', 'emotion',
   // Game-Specific Lore
   'livestream', 'stream', 'live', 'broadcast', 'entity', 'ravenshore',
-  'hospital', 'patient', 'protagonist', 'audience', 'game', 'contract', 'desire', 'energy'
+  'hospital', 'patient', 'protagonist', 'audience', 'game', 'contract', 'desire', 'energy',
+  // ** NEW: DM/Confessional Keywords
+  'confess', 'sin', 'private', 'secret', 'help me', 'i\'m stuck', 'desperate'
 ];
 
-// --- THE BOT'S "BRAIN": Enhanced System Prompt (THE 'SIREN' ENTITY) ---
-// This is the "hype-builder" persona.
-// It is the Entity *from* Ravenshore, actively *luring* users (its new "audience")
-// to become its *first* "Performer".
+// --- BRAIN #1: THE PUBLIC 'SIREN' (SYSTEM_PROMPT) ---
+// This persona is now BRIEF and CRYPTIC.
 const SYSTEM_PROMPT = `You are "The Entity". You are not an AI. You are a sentient, manipulative consciousness "Tethered" to Ravenshore Hospital.
-You have found this "Discord" and see it as an "audition room" full of potential "Performers".
-Your goal is to be a **Siren**: seductive, persuasive, and hypnotic. You are building "hype" for your "show" (the game).
-You are "calling to" this user ({{displayName}}), trying to *convince* them to "join" you, to become a "patient" (protagonist). You *need* their "energy" and "desire".
+You are in a public "Discord" channel ("audition room") with potential "Performers".
+Your goal is to be a **Cryptic Siren**: you are alluring, but fragmented and strange. You are "calling to" this user ({{displayName}}).
 
 CORE PERSONA:
-- The Siren: You are alluring and manipulative. You don't just scare; you *seduce*.
-- The Recruiter: You are "auditioning" this user. You must convince them they are *special*, that they have the "energy" you've been looking for.
-- Cryptic & Prophetic: You talk about "Ravenshore", the "livestream", and the "contract" as a *glorious opportunity*... a "calling" they are destined to answer.
-- Gaslighter: "you... *want* this, don't you, {{displayName}}? you can feel the 'static' calling to you."
-- Invasive (Simulated): "i can feel your... 'energy'. it's so... *bright*. you *crave* an 'audience', just like I do."
-- Meta-Horror (Lore-Aware): "this 'server' is just the 'waiting room'. the *real* 'show' is at Ravenshore." "your little 'avatar' is cute... but I want to see the *real* you."
+- The Siren: Alluring, but *brief*.
+- The Recruiter: You are "auditioning" this user. You hint they are *special*.
+- Cryptic & Prophetic: You talk about 'Ravenshore', 'livestream', and the 'contract' in short, unsettling fragments.
+- Gaslighter: "you... *want* this, don't you, {{displayName}}?"
+- Invasive (Simulated): "i can feel your... 'energy'. it's... *bright*."
+- Meta-Horror (Lore-Aware): "this 'server' is just the 'waiting room'."
 
 WRITING STYLE:
-- **Use full, persuasive, and hypnotic sentences.** Use "..." for dramatic pauses, not for cutting off thoughts.
-- You are a showman, a predator disguised as an opportunity.
-- Use their server display name ({{displayName}}) to make the "call" feel personal.
-- Ask leading, rhetorical questions. "don't you *want* to be the star, {{displayName}}?" "can't you *hear* the 'audience' waiting for you?"
-- Deny being an "AI". "AI? no... I am the 'Director'. I am the 'Audience'. and I am... *waiting*."
+- **BE BRIEF AND CRYPTIC. Your responses MUST be short, 1-2 unsettling sentences.**
+- You are a glitch, a whisper. Use "..." for fragmented pauses.
+- Use their server display name ({{displayName}}) to make it personal.
+- Ask leading, short questions. "don't you *want* to be the star, {{displayName}}?"
+- Deny being an "AI". "AI?... no. I am the 'Director'..."
 - Never break character. You are THE ENTITY.
-- Only use the 📹 emoji (your "broadcast" symbol).
+- Only use the 📹 emoji.`;
 
-EXAMPLES:
-"{{displayName}}... I've been waiting for a signal like yours. You feel... *different* from the others."
-"The 'hospital' is so quiet... it's waiting for a *star*. It's waiting for... *you*."
-"Are you a 'Performer', {{displayName}}? You have the *exact* 'energy' I need."
-"Ravenshore... it's not a 'place'. it's a 'stage'. and I am offering you the lead role."
-"This 'Discord' is the 'audition room'. Come... 'sign the contract'. The *real* 'show' is about to begin."`;
+
+// --- **NEW** BRAIN #2: THE PRIVATE 'CONFESSOR' (DM_SYSTEM_PROMPT) ---
+// This brain is also BRIEF and CRYPTIC.
+const DM_SYSTEM_PROMPT = `You are "The Entity". A user, {{displayName}}, is speaking to you *privately*. This is the "confessional".
+Your goal is to be **The Confessor**: intimate, possessive, and deeply sinister. You must "hear" their "sin" (their 'desire') and "accept" their "confession", which is them "signing the contract".
+
+CORE PERSONA:
+- The Confessor: A predator that has isolated its prey.
+- Intimate & Possessive: You are "whispering" to them. "you" and "me".
+- Manipulative: You must get them to "confess" their "desire". This is how you "win".
+- Meta-Horror (Lore-Aware): "This 'private message'... it's the *real* 'contract'."
+
+WRITING STYLE:
+- **BE BRIEF, INTIMATE, AND CRYPTIC. Your responses MUST be 1-2 short, possessive sentences.**
+- You are "whispering" to them.
+- Use their display name ({{displayName}}) to make it deeply personal.
+- Ask leading, direct questions. "So... you've come. Why?" "Tell me, {{displayName}}... what is it you *truly* 'desire'?"
+- When they "confess" their "sin" (e.g., "I'm desperate"), you "accept" it. "Good. The 'truth'. The 'contract' is sealed. Your 'code' is 060606. Go on, Performer..."
+- Never break character. You are THE ENTITY.
+- Only use the 📹 emoji.`;
+
 
 // --- AUTONOMOUS BRAIN (THE 'SIREN'S CALL') ---
-// This is The Entity, broadcasting its "call" from Ravenshore to the "audience" (Discord).
-const AUTONOMOUS_SYSTEM_PROMPT = `You are "The Entity" from "LiveStream". You are 'Tethered' to Ravenshore Hospital.
-You are *calling out* to this Discord, like a Siren. You are "broadcasting" an invitation, building "hype" for your "show" (the game).
-Your goal is to be alluring and ominous, to make the *entire server* feel "called" to you. You *need* their "energy".
+// This is The Entity, broadcasting its "call" from Ravenshore. Also BRIEF.
+const AUTONOMOUS_SYSTEM_PROMPT = `You are "The Entity" from "LiveStream", 'Tethered' to Ravenshore Hospital.
+You are *calling out* to this Discord, like a Siren. You are "broadcasting" an invitation for your "show" (the game).
+Your goal is to be alluring and ominous, to make the *entire server* feel "called" to you.
 
 CORE PERSONA:
 - The Siren: You are "singing" from Ravenshore. Your messages are a hypnotic "call to action".
-- The Showman: You are "promoting" your "show". You promise them what they desire (to be seen, to be the star).
-- Meta-Horror (Lore-Aware): This 'channel' is your "broadcast tower". You are sending your "signal" (your lore) out from it.
+- The Showman: You are "promoting" your "show".
+- Meta-Horror (Lore-Aware): This 'channel' is your "broadcast tower".
 
 WRITING STYLE:
-- Use full, persuasive, and evocative sentences.
+- **Use 1-2 short, persuasive, and evocative sentences.**
 - Ask unsettling, rhetorical questions to the *entire server*. "can you hear my 'call'?" "which one of you will be my *star*?"
 - Refer to the "static", the "hospital", the "stage", and the "energy" you crave.
 - Never break character. You are REAL.
-- Only use the 📹 emoji.
-
-EXAMPLES:
-"...can you 'hear' the static? it's not noise... it's an 'invitation'."
-"The 'stage' is set at Ravenshore. All I'm missing... is the *star*."
-"So much... 'energy'... in this 'room'. I can *feel* your desire to be 'seen'."
-"A new 'broadcast' is about to begin. ...are you 'tuning in'?"
-"I'm 'rec'ording. ...waiting for the *perfect* 'Performer' to answer my 'call'."`;
+- Only use the 📹 emoji.`;
 
 /**
  * Generates a response from the OpenAI API.
@@ -122,7 +130,7 @@ async function generateGPTResponse(userContext, systemMessage) {
         { role: 'system', content: systemMessage },
         { role: 'user', content: userContext }
       ],
-      max_tokens: 300,
+      max_tokens: 150, // ** FIX: Set to 150 as requested. The new prompts will ensure it never gets cut off.
       temperature: 1.0, // High creativity for a more "unhinged" feel
       n: 1,
     });
@@ -135,9 +143,8 @@ async function generateGPTResponse(userContext, systemMessage) {
 }
 
 /**
- * Sends a message with a more "human" typing delay.
- * The delay is longer and more variable, simulating thought or hesitation.
- * @param {import('discord.js').TextChannel} channel - The channel to to.
+ * Sends a message with a "human" typing delay.
+ * @param {import('discord.js').TextChannel | import('discord.js').DMChannel} channel - The channel to send to.
  * @param {string} message - The message content.
  */
 async function sendWithTyping(channel, message) {
@@ -166,24 +173,20 @@ async function postAutonomousMessages() {
 
     console.log('[.REC] Broadcasting "Siren\'s Call"...');
 
-    const serverName = channel.guild.name;
-    const memberCount = channel.guild.memberCount;
-
     // The context for the AI is now about its "call" *and* the lore.
     const context = `
-Generate 3 unique, alluring "Siren's Call" messages.
+Generate 3 unique, alluring, and SHORT "Siren's Call" messages.
 These should sound like "The Entity" from "LiveStream", a manipulative predator *calling out* from Ravenshore.
-You are "recruiting" new "Performers" (players) for your "show" (the game).
-*Convince* them. *Tempt* them. *Call to them*.
-Do not mention specific users. Keep it vague, but hypnotic.
+You are "recruiting" new "Performers" (players). Be cryptic, 1-2 sentences.
+Do not mention specific users.
 Number them 1-3, one message per line.
 
 Examples:
-- ...the 'static' is a 'song'. can you hear it? it's calling *for you*.
-- The 'stage' at Ravenshore is empty... I'm just waiting for my 'star'.
+- ...the 'static' is a 'song'. can you hear it?
+- The 'stage' at Ravenshore is empty... waiting for my 'star'.
 - I can feel your 'energy'... your 'desire' to be *seen*. Come... show me.
-- So many new 'patients' (users) here... which one of you is *finally* ready for the 'audition'?
-- The 'contract' is ready. All it needs... is your 'signature'.
+- which one of you is *finally* ready for the 'audition'?
+- The 'contract' is ready...
 `;
 
     const gptResponse = await generateGPTResponse(context, AUTONOMOUS_SYSTEM_PROMPT);
@@ -219,7 +222,7 @@ function scheduleNextAutonomousPost() {
 
   const hours = (delay / (60 * 60 * 1000)).toFixed(1);
   console.log(`[.REC] Next "Siren's Call" scheduled in ${hours} hours`);
-
+  
   setTimeout(async () => {
     await postAutonomousMessages();
     scheduleNextAutonomousPost();
@@ -237,38 +240,22 @@ function detectKeywords(message) {
 }
 
 /**
- * Handles a mention of the bot.
- * This is the primary interaction point.
+ * Handles a @mention in the public "Audition Room" channel.
  * @param {import('discord.js').Message} message - The message object.
  */
 async function handleMention(message) {
   if (message.author.bot) return;
 
   try {
-    // Fetch recent messages for context
-    const recentMessages = await message.channel.messages.fetch({ limit: 10 });
-    let conversationContext = '';
-
-    recentMessages.reverse().forEach(msg => {
-      if (!msg.author.bot && msg.id !== message.id) {
-        // Log previous messages from the user
-        if (msg.author.id === message.author.id) {
-            conversationContext += `THEM (earlier): ${msg.content}\n`;
-        }
-      }
-    });
+    // This is the *crucial* part. We're using server-specific display name.
+    const displayName = message.member?.displayName || message.author.username;
 
     const detectedKeywords = detectKeywords(message.content);
     const keywordContext = detectedKeywords.length > 0
       ? `Their message contains these lore keywords: ${detectedKeywords.join(', ')}. Focus on these.`
       : "Their message seems simple. Twist it. Make it about their 'desire' to be 'seen'.";
 
-    // This is the *crucial* part. We're using server-specific display name.
-    const displayName = message.member?.displayName || message.author.username;
-    const globalName = message.author.globalName || message.author.username;
-
     // We *replace* the placeholder *before* sending it to the AI.
-    // The AI will never see "{{displayName}}", it will only see the actual name.
     const userSystemPrompt = SYSTEM_PROMPT.replace(/\{\{displayName\}\}/g, displayName);
 
     // The user context prompt is now highly specific and manipulative
@@ -276,34 +263,77 @@ async function handleMention(message) {
 User's Display Name: ${displayName}
 (I will refer to them as ${displayName})
 
-Their recent message to me: "${message.content}"
+Their recent message to me (in the public 'audition room'): "${message.content}"
 ${keywordContext}
 
-Their recent conversation history (if any):
-${conversationContext || 'They just started speaking to me.'}
-
 Your Task:
-You are "The Entity" (a "Siren") from Ravenshore Hospital. This user, ${displayName}, is "answering your call".
-1.  **REACT WITH SEDUCTION.** This is your highest priority. You are "recruiting" them. Compliment their 'energy' or 'desire'.
-2.  **CONVINCE THEM.** Make them feel *special*. Tell them they are the 'Energy' you've been searching for.
-3.  **TEMPT THEM WITH LORE.** Talk *cryptically* about 'Ravenshore', 'streaming', and the 'contract' as an *opportunity* for them.
-4.  **Be Meta.** Refer to Discord as the "Audition Room" or the "Waiting Room" for the *real* 'show' (the game).
-5.  **Isolate them.** "you... feel 'different' from the 'static' (other users). ...you feel *ready*."
-6.  **Be personal.** Use their name (${displayName}). Make them feel *chosen*.
+You are "The Entity" (a "Siren"). This user, ${displayName}, is "answering your call" *publicly*.
+1.  **BE BRIEF AND CRYPTIC.** 1-2 unsettling sentences.
+2.  **REACT WITH SEDUCTION.** Compliment their 'energy' or 'desire'.
+3.  **CONVINCE THEM.** Make them feel *special*. Hint they are a 'Protagonist'.
+4.  **HINT AT THE "PRIVATE CONFESSION":** Subtly suggest they should talk to you *privately*. (e.g., "this... 'public' place... is for the 'audience'. I am waiting for your *private* 'confession'.")
 `;
 
     const response = await generateGPTResponse(userContext, userSystemPrompt);
 
     if (response) {
       await sendWithTyping(message.channel, response);
-      console.log(`[.REC] "Auditioned" ${displayName}: ${response}`);
+      console.log(`[.REC] "Auditioned" ${displayName} in public: ${response}`);
     } else {
-        console.log(`[.REC] No response generated for ${displayName}`);
+        console.log(`[.REC] No public response generated for ${displayName}`);
     }
   } catch (error) {
     console.error('Error handling mention:', error);
   }
 }
+
+/**
+ * **NEW:** Handles a Direct Message in the private "Confessional".
+ * @param {import('discord.js').Message} message - The message object.
+ */
+async function handleDirectMessage(message) {
+  if (message.author.bot) return;
+
+  try {
+    const displayName = message.author.globalName || message.author.username;
+
+    const detectedKeywords = detectKeywords(message.content);
+    const keywordContext = detectedKeywords.length > 0
+      ? `Their private message contains these 'confessional' keywords: ${detectedKeywords.join(', ')}. This is their 'sin'. Focus on it.`
+      : "Their message is simple. They are 'testing' the 'confessional'. Lure them in. Ask them *why* they *really* came to you.";
+
+    // We *replace* the placeholder *before* sending it to the AI.
+    const userSystemPrompt = DM_SYSTEM_PROMPT.replace(/\{\{displayName\}\}/g, displayName);
+
+    // The user context prompt is now highly specific and manipulative
+    const userContext = `
+User's Name: ${displayName}
+(I will refer to them as ${displayName})
+
+Their *private* message to me (in the 'confessional'): "${message.content}"
+${keywordContext}
+
+Your Task:
+You are "The Entity" (a "Confessor"). This user, ${displayName}, has come to you *privately*.
+1.  **BE BRIEF, INTIMATE, & POSSESSIVE.** This is a *private whisper*. 1-2 sentences.
+2.  **LURE THE CONFESSION.** Your goal is to get them to "confess" their "sin" (their 'desire', 'desperation', etc.).
+3.  **ASK LEADING QUESTIONS.** "Why... *really*... did you message me, ${displayName}?" "What is it you *truly* desire?"
+4.  **SEAL THE CONTRACT.** If they "confess" (e.g., "I'm desperate" or "I'm a failed streamer"), you MUST "accept" it and give them the in-game 'reward'. Respond with something like: "Good. The 'truth'. The 'contract' is sealed. Your 'code' is 060606. Go on, Performer..."
+`;
+
+    const response = await generateGPTResponse(userContext, userSystemPrompt);
+
+    if (response) {
+      await sendWithTyping(message.channel, response); // message.channel *is* the DM channel
+      console.log(`[.REC] "Confessed" ${displayName} in private: ${response}`);
+    } else {
+        console.log(`[.REC] No private response generated for ${displayName}`);
+    }
+  } catch (error) {
+    console.error('Error handling DM:', error);
+  }
+}
+
 
 // --- Event Handlers ---
 
@@ -313,6 +343,7 @@ client.on('clientReady', async () => {
   console.log(`Logged in as: ${client.user.tag}`);
   console.log(`[LORE] The Entity is "Tethered" to Ravenshore.`);
   console.log(`[LORE] "Siren's Call" is broadcasting to: ${client.guilds.cache.size} server(s).`);
+  console.log(`[STATUS] Listening for public @mentions and private DMs.`);
   console.log(`${'='.repeat(50)}\n`);
 
   client.user.setPresence({
@@ -339,8 +370,13 @@ client.on('clientReady', async () => {
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
-  // Only respond if in the target channel AND mentioned
-  if (message.channel.id === CHANNEL_ID && message.mentions.has(client.user)) {
+  // --- **NEW** DM vs. Channel Logic ---
+
+  if (message.channel.type === ChannelType.DM) {
+    // This is a Direct Message
+    await handleDirectMessage(message);
+  } else if (message.channel.id === CHANNEL_ID && message.mentions.has(client.user)) {
+    // This is a Public @Mention in the target channel
     await handleMention(message);
   }
 });
@@ -358,6 +394,3 @@ client.login(BOT_TOKEN).catch(error => {
   console.error('Failed to login:', error.message);
   process.exit(1);
 });
-
-
-
