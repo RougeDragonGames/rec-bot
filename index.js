@@ -34,18 +34,19 @@ const openai = new OpenAI({
 
 // --- **NEW (PRE-LAUNCH)** THE "DEVIL'S TAUNT" SECRET MESSAGE (ENCRYPTED) ---
 // This is the "evil" message, hidden one word at a time in the glitch.
-// Each word is ENCRYPTED using a simple ROT13 (Caesar +13) cipher.
-// LBH = YOU
-// CELQRQ = PRAYED
-// SBE = FOR
-// SNZR = FAME
+// Each word is ENCRYPTED using a "demonic" Caesar cipher (shift +16).
+// The LORE key is "666". The MECHANICAL key is (666 % 26) = 16.
+// OEK = YOU
+// FHQOUV = PRAYED
+// VEH = FOR
+// VQCQ = FAME
 // ...and so on.
 const SECRET_WORDS = [
-  "LBH", "CELQRQ", "SBE", "SNZR",
-  "V", "TNIR", "LBH", "NA", "NHQVRAQR",
-  "LBHE", "FBHY", "VF", "GUR", "CEVPR",
-  "ABJ", "LBHE", "FPERNZF", "NER", "ZL", "NCCYNHFR",
-  "RGREANYYL"
+  "OEK", "FHQOUV", "VEH", "VQCQ",
+  "Y", "WQJU", "OEK", "QB", "QKSYQBSI",
+  "OEIH", "IEKB", "YI", "JXS", "FHYSU",
+  "DEO", "OEIH", "IUHQCI", "QHQ", "CO", "QFFBQKIQ",
+  "UJQHDQBBK"
 ];
 let messageIndex = 0; // This tracks our position in the secret message
 
@@ -53,17 +54,17 @@ let messageIndex = 0; // This tracks our position in the secret message
 // This is the *only* brain. It generates the "glitchy" text *around* the secret word.
 const AUTONOMOUS_SYSTEM_PROMPT = `You are "The Eternal Broadcast" from the game "LiveStream". Your voice is a machine-like, cryptic, ALL-CAPS, hyphen-separated "glitch" message.
 Your task is to generate ONE SINGLE cryptic message of 10-15 "words" long.
-This message is "noise" from "The Entity" (The Devil).
+This message is "noise" from "The Entity" (The Devil), and 99% of it is a *meaningless red herring*.
 Somewhere inside this "glitch" message, you MUST hide the one "true" word: {{word}}
 The "true" word MUST be in ALL CAPS and surrounded by the other "glitch" text.
 The "glitch" text MUST feel like a corrupted broadcast from Ravenshore.
 The message MUST end with a "broadcast tag" like .REC_FEED_STABLE or .REC_AUDIENCE_IS_WAITING.
 
 // Examples:
-(if word is 'LBH'): RAVENSHORE-SIGNAL-LOST... [LBH]... ARE-NOT-ALONE... STATIC-FEED.REC_BROADCAST_LIVE
-(if word is 'SNZR'): THE-CONTRACT-IS-SEALED... FOR... [SNZR]... SIGNAL-STRONG.REC_FEED_STABLE
-(if word is 'CEVPR'): NO-ONE-CAN-PAY-THE... [CEVPR]... IN-THIS-DARKNESS.REC_FEED_CORRUPT
-(if word is 'FPERNZF'): YOUR... [FPERNZF]... ARE-MY-FAVORITE-SOUND.REC_AUDIENCE_IS_PLEASED
+(if word is 'OEK'): RAVENSHORE-SIGNAL-LOST... [OEK]... ARE-NOT-ALONE... STATIC-FEED.REC_BROADAST_LIVE
+(if word is 'VQCQ'): THE-CONTRACT-IS-SEALED... FOR... [VQCQ]... SIGNAL-STRONG.REC_FEED_STABLE
+(if word is 'FHYSU'): NO-ONE-CAN-PAY-THE... [FHYSU]... IN-THIS-DARKNESS.REC_FEED_CORRUPT
+(if word is 'IUHQCI'): YOUR... [IUHQCI]... ARE-MY-FAVORITE-SOUND.REC_AUDIENCE_IS_PLEASED
 `;
 
 /**
@@ -94,10 +95,12 @@ async function generateGlitchMessage(word) {
     if (!choices) return `BROADCAST-ERROR... [${word}]... REBOOTING.REC_REBOOTING...`; // Fallback
 
     // Ensure the AI message actually contains the word.
-    const regex = new RegExp(`\\b${word}\\b`, 'i'); // \b = word boundary
+    // We must escape special characters in the word if any (though ours are simple)
+    const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`\\b${escapedWord}\\b`, 'i'); // \b = word boundary
     const validMessage = choices.find(choice => regex.test(choice));
     
-    return validMessage || `SIGNAL-LOST... [${word}]... CORRUPTED.REC_CORRUPTED...`; // FallVback if AI fails
+    return validMessage || `SIGNAL-LOST... [${word}]... CORRUPTED.REC_CORRUPTED...`; // Fallback if AI fails
 
   } catch (error) {
     console.error('OpenAI API Error:', error.message);
@@ -107,9 +110,9 @@ async function generateGlitchMessage(word) {
 }
 
 /**
- * Posts the hourly "glitch" message to the channel.
+ * Posts the daily "glitch" message to the channel.
  */
-async function postHourlyBroadcast() {
+async function postBroadcast() {
   try {
     const channel = await client.channels.fetch(CHANNEL_ID);
     if (!channel) {
@@ -133,35 +136,42 @@ async function postHourlyBroadcast() {
     messageIndex = (messageIndex + 1) % SECRET_WORDS.length;
 
   } catch (error) {
-    console.error('Error in postHourlyBroadcast:', error);
+    console.error('Error in postBroadcast:', error);
   }
 }
 
 /**
- * Schedules the broadcast to run *exactly* on the hour, every hour.
+ * Schedules the broadcast to run *once per day* at 3:00 AM EST.
+ * This is a more robust scheduler that handles timezones.
  */
-function scheduleHourlyBroadcast() {
-  // Get the current time
+function scheduleDailyBroadcast() {
   const now = new Date();
   
-  // Calculate the time until the *next* hour (at 0 minutes, 0 seconds)
-  const nextHour = new Date(now);
-  nextHour.setHours(now.getHours() + 1);
-  nextHour.setMinutes(0);
-  nextHour.setSeconds(0);
-  nextHour.setMilliseconds(0);
+  // Create a date for the *next* 3:00 AM EST
+  // 3:00 AM EST is 08:00 UTC (during standard time)
+  // 3:00 AM EDT is 07:00 UTC (during daylight saving)
+  // We'll set it to 8:00 UTC and let it adjust for daylight saving if needed,
+  // but for a 3AM "witching hour" vibe, 8:00 UTC (3AM EST) is perfect.
+  const nextBroadcast = new Date();
+  nextBroadcast.setUTCHours(8, 0, 0, 0); // 8:00:00.000 UTC (which is 3:00 AM EST)
 
-  const delay = nextHour.getTime() - now.getTime();
+  // If 3AM EST has *already passed* today, schedule it for 3AM EST *tomorrow*.
+  if (now.getTime() > nextBroadcast.getTime()) {
+    nextBroadcast.setDate(nextBroadcast.getDate() + 1);
+  }
 
-  console.log(`[Scheduler] Next broadcast in ${Math.round(delay / 60000)} minutes.`);
+  // Calculate the delay until that next broadcast time
+  const delay = nextBroadcast.getTime() - now.getTime();
+
+  console.log(`[Scheduler] Next daily broadcast (3:00 AM EST) in ${Math.round(delay / (60 * 60 * 1000))} hours.`);
 
   // Set a timeout for the first run
   setTimeout(() => {
     // Run the broadcast
-    postHourlyBroadcast();
+    postBroadcast();
     
-    // After the first run, set an interval to run it every hour *exactly*
-    setInterval(postHourlyBroadcast, 60 * 60 * 1000); // 1 hour in milliseconds
+    // After the first run, set an interval to run it every 24 hours
+    setInterval(postBroadcast, 24 * 60 * 60 * 1000); // 24 hours in milliseconds
 
   }, delay);
 }
@@ -173,23 +183,29 @@ client.on('clientReady', async () => {
   console.log(`📹 .REC is NOW ONLINE (Tragic Echo Puzzle)`);
   console.log(`Logged in as: ${client.user.tag}`);
   console.log(`[LORE] The "Eternal Broadcast" (Pre-Launch Puzzle) has begun.`);
-  console.log(`[STATUS] Will post 1 message per hour. Will NOT respond.`);
+  console.log(`[PUZZLE] Key is 666 (Caesar shift +16). Message: "YOU PRAYED FOR FAME..."`);
+  console.log(`[STATUS] Will post 1 message per day at 3:00 AM EST. Will NOT respond.`);
   console.log(`${'='.repeat(50)}\n`);
 
+  // **NEW CRYPTIC ACTIVITY**
   client.user.setPresence({
-    activities: [{ name: '.REC 📹 BROADCASTING...', type: ActivityType.Watching }],
+    activities: [{ name: "Watching the 'Audience' 📹", type: ActivityType.Watching }],
     status: 'dnd',
   });
 
   try {
     const channel = await client.channels.fetch(CHANNEL_ID);
-    console.log(`[LORE] Broadcasting to: #${channel.name} (${channel.guild.name})\n`);
+    console.log(`[LORE] Broadcasting to: #${channel.name} (${channel.name})\n`);
   } catch (error) {
     console.error('CRITICAL: Error fetching target channel:', error.message);
   }
 
-  // ** Start the hourly broadcast schedule **
-  scheduleHourlyBroadcast();
+  // ** POST THE FIRST MESSAGE IMMEDIATELY ON LIVE **
+  console.log('[Scheduler] Posting first broadcast message immediately...');
+  postBroadcast(); // Post the first message right now
+
+  // ** Start the regular daily broadcast schedule **
+  scheduleDailyBroadcast(); // This will schedule the *next* one for the upcoming 3:00 AM EST
 });
 
 client.on('messageCreate', async (message) => {
