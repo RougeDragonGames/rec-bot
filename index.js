@@ -122,7 +122,7 @@ async function generateGPTResponse(userContext, systemMessage) {
         { role: 'system', content: systemMessage },
         { role: 'user', content: userContext }
       ],
-      max_tokens: 150,
+      max_tokens: 300,
       temperature: 1.0, // High creativity for a more "unhinged" feel
       n: 1,
     });
@@ -358,5 +358,6 @@ client.login(BOT_TOKEN).catch(error => {
   console.error('Failed to login:', error.message);
   process.exit(1);
 });
+
 
 
