@@ -261,7 +261,7 @@ async function handleMention(message) {
     const detectedKeywords = detectKeywords(message.content);
     const keywordContext = detectedKeywords.length > 0
       ? `Their message contains these lore keywords: ${detectedKeywords.join(', ')}. Focus on these.`
-      : 'Their message seems simple. Twist it. Make it about their 'desire' to be 'seen'.';
+      : 'Their message seems simple. Twist it. Make it about their 'want' to be 'seen'.';
 
     // This is the *crucial* part. We're using server-specific display name.
     const displayName = message.member?.displayName || message.author.username;
@@ -358,3 +358,4 @@ client.login(BOT_TOKEN).catch(error => {
   console.error('Failed to login:', error.message);
   process.exit(1);
 });
+
