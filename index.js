@@ -25,7 +25,7 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayTo.GuildMembers, // Required to see member display names
+    GatewayIntentBits.GuildMembers, // Required to see member display names
     GatewayIntentBits.DirectMessages, // ** NEW: Required to listen for DMs
   ],
   partials: [Partials.Channel], // ** NEW: Required for DM channel detection
